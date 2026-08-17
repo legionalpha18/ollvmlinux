@@ -26,6 +26,11 @@ add_llvm_component_library(LLVMPasses
   Obfuscation/MergeFunction.cpp
   Obfuscation/AntiDebugging.cpp
   Obfuscation/FunctionWrapper.cpp
+  Obfuscation/SubstituteImpl.cpp
+  Obfuscation/Virtualization.cpp
+  Obfuscation/ConstantEncryption.cpp
+  Obfuscation/AntiHook.cpp
+  Obfuscation/FunctionCallObfuscate.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm

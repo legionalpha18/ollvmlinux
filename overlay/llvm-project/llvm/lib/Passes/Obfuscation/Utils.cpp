@@ -11,8 +11,10 @@
  */
 #include "Utils.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/MDBuilder.h"
 #include <random>  // std::default_random_engine / std::shuffle -- not
                     // reliably pulled in transitively; MSVC needs it explicit
+#include <cstdlib>
 
 using namespace llvm;
 using std::vector;
@@ -376,4 +378,135 @@ void llvm::getRandomNoRepeat(unsigned upper_bound, unsigned size,
   for (unsigned i = 0; i < size; i++) {
     result.push_back(list[i]);
   }
+}
+
+// --- Hikari helpers (ported for ConstantEncryption / Virtualization / ---
+// --- AntiHook / FunctionCallObfuscate)                                 ---
+
+static const char obfkindid[] = "MD_obf";
+
+static bool readAnnotationMetadataUint32OptVal(Function *f, std::string opt,
+                                               uint32_t *val) {
+  MDNode *Existing = f->getMetadata(obfkindid);
+  if (Existing) {
+    MDTuple *Tuple = cast<MDTuple>(Existing);
+    for (auto &N : Tuple->operands()) {
+      StringRef mdstr = cast<MDString>(N.get())->getString();
+      std::string estr = opt + "=";
+      if (mdstr.startswith(estr)) {
+        *val = static_cast<uint32_t>(atoi(mdstr.substr(estr.size()).str().c_str()));
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+static bool readAnnotationUint32OptVal(Function *f, std::string opt,
+                                       uint32_t *val) {
+  std::string ann = getFunctionAnnotation(f);
+  std::string estr = opt + "=";
+  size_t pos = ann.find(estr);
+  if (pos != std::string::npos) {
+    size_t end = ann.find_first_of(" \t", pos + estr.size());
+    if (end == std::string::npos)
+      end = ann.size();
+    *val = static_cast<uint32_t>(
+        atoi(ann.substr(pos + estr.size(), end - pos - estr.size()).c_str()));
+    return true;
+  }
+  return false;
+}
+
+bool llvm::toObfuscateBoolOption(Function *f, std::string option, bool *val) {
+  std::string opt = option;
+  std::string optDisable = "no" + option;
+  if (readAnnotationMetadata(f, optDisable)) {
+    *val = false;
+    return true;
+  }
+  if (readAnnotationMetadata(f, opt)) {
+    *val = true;
+    return true;
+  }
+  std::string ann = getFunctionAnnotation(f);
+  if (ann.find(optDisable) != std::string::npos) {
+    *val = false;
+    return true;
+  }
+  if (ann.find(opt) != std::string::npos) {
+    *val = true;
+    return true;
+  }
+  return false;
+}
+
+bool llvm::toObfuscateUint32Option(Function *f, std::string option,
+                                   uint32_t *val) {
+  if (readAnnotationMetadataUint32OptVal(f, option, val))
+    return true;
+  if (readAnnotationUint32OptVal(f, option, val))
+    return true;
+  return false;
+}
+
+void llvm::turnOffOptimization(Function *f) {
+  f->removeFnAttr(Attribute::AttrKind::MinSize);
+  f->removeFnAttr(Attribute::AttrKind::OptimizeForSize);
+  if (!f->hasFnAttribute(Attribute::AttrKind::OptimizeNone) &&
+      !f->hasFnAttribute(Attribute::AttrKind::AlwaysInline)) {
+    f->addFnAttr(Attribute::AttrKind::OptimizeNone);
+    f->addFnAttr(Attribute::AttrKind::NoInline);
+  }
+}
+
+bool llvm::readAnnotationMetadata(Function *f, std::string annotation) {
+  MDNode *Existing = f->getMetadata(obfkindid);
+  if (Existing) {
+    MDTuple *Tuple = cast<MDTuple>(Existing);
+    for (auto &N : Tuple->operands())
+      if (cast<MDString>(N.get())->getString() == annotation)
+        return true;
+  }
+  return false;
+}
+
+void llvm::writeAnnotationMetadata(Function *f, std::string annotation) {
+  LLVMContext &Context = f->getContext();
+  MDBuilder MDB(Context);
+
+  MDNode *Existing = f->getMetadata(obfkindid);
+  SmallVector<Metadata *, 4> Names;
+  bool AppendName = true;
+  if (Existing) {
+    MDTuple *Tuple = cast<MDTuple>(Existing);
+    for (auto &N : Tuple->operands()) {
+      if (cast<MDString>(N.get())->getString() == annotation)
+        AppendName = false;
+      Names.emplace_back(N.get());
+    }
+  }
+  if (AppendName)
+    Names.emplace_back(MDB.createString(annotation));
+
+  MDNode *MD = MDTuple::get(Context, Names);
+  f->setMetadata(obfkindid, MD);
+}
+
+bool llvm::AreUsersInOneFunction(GlobalVariable *GV) {
+  SmallPtrSet<Function *, 6> userFunctions;
+  for (User *U : GV->users()) {
+    if (Instruction *I = dyn_cast<Instruction>(U)) {
+      userFunctions.insert(I->getFunction());
+    } else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(U)) {
+      for (User *U2 : CE->users()) {
+        if (Instruction *I = dyn_cast<Instruction>(U2)) {
+          userFunctions.insert(I->getFunction());
+        }
+      }
+    } else {
+      return false;
+    }
+  }
+  return userFunctions.size() <= 1;
 }

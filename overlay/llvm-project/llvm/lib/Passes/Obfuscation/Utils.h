@@ -44,5 +44,23 @@ namespace llvm{
     uint64_t getRandomNumber();
     uint32_t getUniqueNumber(std::vector<uint32_t> &rand_list);
     void getRandomNoRepeat(unsigned upper_bound, unsigned size, std::vector<unsigned> &result);
+    // Hikari helpers (ported for ConstantEncryption / Virtualization /
+    // AntiHook / FunctionCallObfuscate)
+    // Same annotation semantics as toObfuscate() above, but for a bool
+    // option (e.g. "vmpenc" / "novmpenc"). Returns true if an override was
+    // found and *val has been updated.
+    bool toObfuscateBoolOption(Function *f, std::string option, bool *val);
+    // Same for a uint32 option (e.g. "constenc_times=5").
+    bool toObfuscateUint32Option(Function *f, std::string option, uint32_t *val);
+    // Force-disable optimizations on a function (used to protect VM
+    // interpreters from being destroyed by later -O2 passes).
+    void turnOffOptimization(Function *f);
+    // Read/write the "MD_obf" per-function annotation metadata. VMP marks
+    // its interpreter helpers with writeAnnotationMetadata(f, "novmp") so a
+    // second VMP invocation will not re-virtualize them.
+    bool readAnnotationMetadata(Function *f, std::string annotation);
+    void writeAnnotationMetadata(Function *f, std::string annotation);
+    // True if every user of GV lives in a single function.
+    bool AreUsersInOneFunction(GlobalVariable *GV);
 }
 #endif // LLVM_UTILS_H

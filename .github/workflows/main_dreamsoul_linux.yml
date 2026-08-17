@@ -14,6 +14,10 @@
 #   -mllvm -mergefunc (Merge functions obfuscation)
 #   -mllvm -antidbg   (Anti-Debugging -- blocks Frida/IDA dynamic attach)
 #   -mllvm -funcwrap  (Function Wrapper -- hides call targets)
+#   -mllvm -vmp       (Virtual Machine Obfuscation -- Hikari VMP interpreter)
+#   -mllvm -constenc  (Constant Encryption -- Hikari)
+#   -mllvm -antihook  (Anti-Hooking -- Hikari, AArch64 inline-hook detection)
+#   -mllvm -fco       (Function Call Obfuscation -- Hikari dlopen/dlsym redirect)
 #   -mllvm -aarch64-obfu (AArch64 backend obfuscation -- requires asm("backend-obfu") marker)
 #   Full: __attribute__((annotate("fla bcf sub mba linearmba aliasaccess junkcode boguscfg2 mergefunction antidbg funcwrap")))
 # ====================================================================
@@ -272,6 +276,64 @@ jobs:
           grep -c "Obfuscation/AntiDebugging.h" "$PB" || true
 
       # ---------------------------------------------------------------
+      # 6c2. Patch PassBuilder.cpp: add Hikari passes (VMP, Constant
+      #      Encryption, Anti-Hooking, FunctionCallObfuscate). Must run
+      #      AFTER 6c so its anchors (AntiDebugging / FunctionWrapper /
+      #      RewriteSymbolPass) are already present.
+      # ---------------------------------------------------------------
+      - name: Patch PassBuilder.cpp (Hikari passes: vmp constenc antihook fco)
+        run: |
+          set -euo pipefail
+          PY=python3
+          PB="llvm-project-17.0.6.src/llvm/lib/Passes/PassBuilder.cpp"
+          cat > /tmp/patch_pb_hikari.py <<'PYEOF'
+          from pathlib import Path
+          import sys
+          p = Path(sys.argv[1])
+          text = p.read_text(encoding="utf-8", errors="replace")
+
+          if 'Obfuscation/Virtualization.h' in text:
+              print("PassBuilder already patched for Hikari passes -- skipping")
+              sys.exit(0)
+
+          def must_replace(text, marker, new, label):
+              if marker not in text:
+                  print(f"ERROR: {label} marker not found in PassBuilder.cpp. "
+                        f"Marker was:\n{marker}")
+                  sys.exit(1)
+              return text.replace(marker, new)
+
+          # 1. Add include lines after the FunctionWrapper include
+          inc_marker = '#include "Obfuscation/FunctionWrapper.h" // Function wrapper'
+          inc_new = inc_marker + '\n#include "Obfuscation/Virtualization.h" // Virtual machine obfuscation (Hikari)\n#include "Obfuscation/ConstantEncryption.h" // Constant encryption (Hikari)\n#include "Obfuscation/AntiHook.h" // Anti-hooking (Hikari)\n#include "Obfuscation/FunctionCallObfuscate.h" // Function call obfuscation (Hikari)'
+          text = must_replace(text, inc_marker, inc_new, "include-line")
+
+          # 2. Add cl::opt flags after s_obf_funcwrap
+          opt_marker = 'static cl::opt<bool> s_obf_funcwrap("funcwrap", cl::init(false), cl::desc("Function Wrapper (hides call targets)"));'
+          opt_new = opt_marker + '\nstatic cl::opt<bool> s_obf_vmp("vmp", cl::init(false), cl::desc("Virtual Machine Obfuscation (Hikari VMP)"));\nstatic cl::opt<bool> s_obf_constenc("constenc", cl::init(false), cl::desc("Constant Encryption (Hikari)"));\nstatic cl::opt<bool> s_obf_antihook("antihook", cl::init(false), cl::desc("Anti-Hooking (Hikari)"));\nstatic cl::opt<bool> s_obf_fco("fco", cl::init(false), cl::desc("Function Call Obfuscation (Hikari)"));'
+          text = must_replace(text, opt_marker, opt_new, "cl::opt flags")
+
+          # 3. Add Function passes at the END of FPM (after AntiDebugging)
+          fpm_marker = 'FPM.addPass(AntiDebugging(s_obf_antidbg)); // Anti-debugging'
+          fpm_new = fpm_marker + '\n        FPM.addPass(FunctionCallObfuscate(s_obf_fco)); // Function call obfuscation\n        FPM.addPass(Virtualization(s_obf_vmp)); // Virtual machine obfuscation'
+          text = must_replace(text, fpm_marker, fpm_new, "FPM registration")
+
+          # 4. Add Module passes: antihook early (before FunctionWrapper),
+          #    constenc late (after FunctionWrapper, before RewriteSymbolPass)
+          mp_marker = 'MPM.addPass(FunctionWrapper(s_obf_funcwrap)); // Function wrapper'
+          mp_new = 'MPM.addPass(AntiHook(s_obf_antihook)); // Anti-hooking (early MPM)\n        MPM.addPass(FunctionWrapper(s_obf_funcwrap)); // Function wrapper\n        MPM.addPass(ConstantEncryption(s_obf_constenc)); // Constant encryption (late MPM)'
+          text = must_replace(text, mp_marker, mp_new, "MPM registration")
+
+          p.write_text(text, encoding="utf-8")
+          print("Patched PassBuilder.cpp with Hikari obfuscation passes")
+          PYEOF
+          "$PY" /tmp/patch_pb_hikari.py "$PB"
+          grep -c "Obfuscation/Virtualization.h" "$PB" || true
+          grep -c "Obfuscation/ConstantEncryption.h" "$PB" || true
+          grep -c "Obfuscation/AntiHook.h" "$PB" || true
+          grep -c "Obfuscation/FunctionCallObfuscate.h" "$PB" || true
+
+      # ---------------------------------------------------------------
       # 6d. Patch AArch64 CMakeLists.txt: add AArch64RubbishCode.cpp
       # ---------------------------------------------------------------
       - name: Patch AArch64 CMakeLists (backend obfuscation)
@@ -493,6 +555,7 @@ jobs:
   #        -mllvm -sobf -mllvm -icall -mllvm -ibr -mllvm -igv
   #        -mllvm -sub -mllvm -sub_loop=3 -mllvm -split -mllvm -split_num=5
   #        -mllvm -mba -mllvm -alias -mllvm -junkcode -mllvm -bcf2 -mllvm -mergefunc
+  #        -mllvm -vmp -mllvm -constenc -mllvm -antihook -mllvm -fco
   #        -mllvm -aarch64-obfu
   #   4. For per-function control use annotation:
   #        __attribute__((annotate("fla bcf sub split mba linearmba aliasaccess junkcode boguscfg2 mergefunction"))) void f(){...}

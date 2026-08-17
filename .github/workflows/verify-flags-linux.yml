@@ -2,7 +2,7 @@
 # OLLVM17 Flag Verification — Manual Test Workflow (Linux)
 #
 # Run this AFTER the main Linux build completes successfully.
-# Tests all 17 flags + 4 tiers using the built clang from the artifact.
+# Tests all 21 flags + 4 tiers using the built clang from the artifact.
 # =====================================================================
 name: Verify OLLVM17 Flags (Linux)
 
@@ -67,7 +67,7 @@ jobs:
           tf="/tmp/ollvm_test.c"
           pass=0; fail=0
 
-          flags=(sub sobf mba alias bcf bcf2 split fla icall ibr igv junkcode mergefunc fncmd aarch64-obfu antidbg funcwrap)
+          flags=(sub sobf mba alias bcf bcf2 split fla icall ibr igv junkcode mergefunc fncmd aarch64-obfu antidbg funcwrap vmp constenc antihook fco)
 
           echo "=== Individual Flag Test ==="
           for f in "${flags[@]}"; do
@@ -94,7 +94,7 @@ jobs:
           low=( -mllvm -sub -mllvm -sub_loop=3 -mllvm -sobf -mllvm -mba -mllvm -alias )
           med=( "${low[@]}" -mllvm -bcf -mllvm -bcf_prob=60 -mllvm -bcf_loop=1 -mllvm -split -mllvm -split_num=5 -mllvm -junkcode -mllvm -icall -mllvm -ibr )
           max=( "${med[@]}" -mllvm -bcf2 -mllvm -mergefunc -mllvm -igv -mllvm -antidbg -mllvm -funcwrap )
-          all=( "${max[@]}" -mllvm -fla -mllvm -aarch64-obfu -mllvm -fncmd )
+          all=( "${max[@]}" -mllvm -fla -mllvm -aarch64-obfu -mllvm -fncmd -mllvm -vmp -mllvm -constenc -mllvm -antihook -mllvm -fco )
 
           echo "=== Tier Combination Test ==="
 
@@ -117,7 +117,7 @@ jobs:
           fi
 
           if "$clang" "${baseargs[@]}" -o /tmp/tier_all.o "${all[@]}" > /tmp/err.log 2>&1; then
-            echo "  [PASS] ALL     [17 passes]"
+            echo "  [PASS] ALL     [21 passes]"
           else
             echo "  [FAIL] ALL"; grep "error:" /tmp/err.log | head -1 || true
           fi
