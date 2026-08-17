@@ -1,0 +1,123 @@
+# =====================================================================
+# OLLVM17 Flag Verification — Manual Test Workflow (Linux)
+#
+# Run this AFTER the main Linux build completes successfully.
+# Tests all 17 flags + 4 tiers using the built clang from the artifact.
+# =====================================================================
+name: Verify OLLVM17 Flags (Linux)
+
+on:
+  workflow_dispatch:
+    inputs:
+      artifact_name:
+        description: 'Artifact to download (from build run)'
+        required: false
+        default: 'ollvm17-17.0.6-linux-x86_64'
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download built toolchain artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ github.event.inputs.artifact_name }}
+          path: ollvm-dist
+
+      - name: Extract toolchain
+        run: |
+          set -euo pipefail
+          mkdir -p ollvm-dist
+          tar -xzf ollvm-dist/*.tar.gz -C ollvm-dist
+          ls -l ollvm-dist/bin/clang
+
+      - name: Show clang version
+        run: |
+          set -euo pipefail
+          clang="$GITHUB_WORKSPACE/ollvm-dist/bin/clang"
+          if [ ! -x "$clang" ]; then
+            echo "ERROR: clang not found. Did the build pass?"
+            find "$GITHUB_WORKSPACE/ollvm-dist" -maxdepth 2 -type f
+            exit 1
+          fi
+          "$clang" --version
+
+      - name: Create test file
+        run: |
+          cat > /tmp/ollvm_test.c <<'EOF'
+          static const char* msg = "ollvm17-verify";
+          int test_func(int a, int b) {
+              int x = a + b;
+              int y = x * 2;
+              int z = y - a;
+              return z ^ (int)msg[0];
+          }
+          int main() { return test_func(1, 2); }
+          EOF
+
+      - name: Test Flags (17 individual)
+        run: |
+          set -uo pipefail
+          clang="$GITHUB_WORKSPACE/ollvm-dist/bin/clang"
+          tf="/tmp/ollvm_test.c"
+          pass=0; fail=0
+
+          flags=(sub sobf mba alias bcf bcf2 split fla icall ibr igv junkcode mergefunc fncmd aarch64-obfu antidbg funcwrap)
+
+          echo "=== Individual Flag Test ==="
+          for f in "${flags[@]}"; do
+            if "$clang" --target=aarch64-linux-android26 -O2 -c "$tf" -o "/tmp/t_$f.o" -mllvm -"$f" > /tmp/err.log 2>&1; then
+              echo "  [PASS] -mllvm -$f"
+              pass=$((pass+1))
+            else
+              echo "  [FAIL] -mllvm -$f"
+              fail=$((fail+1))
+              grep "error:" /tmp/err.log | head -1 || true
+            fi
+          done
+
+          echo ""
+          echo "Individual: $pass / ${#flags[@]} working"
+
+      - name: Test Tiers (4 combinations)
+        run: |
+          set -uo pipefail
+          clang="$GITHUB_WORKSPACE/ollvm-dist/bin/clang"
+          tf="/tmp/ollvm_test.c"
+          baseargs=(--target=aarch64-linux-android26 -O2 -c "$tf")
+
+          low=( -mllvm -sub -mllvm -sub_loop=3 -mllvm -sobf -mllvm -mba -mllvm -alias )
+          med=( "${low[@]}" -mllvm -bcf -mllvm -bcf_prob=60 -mllvm -bcf_loop=1 -mllvm -split -mllvm -split_num=5 -mllvm -junkcode -mllvm -icall -mllvm -ibr )
+          max=( "${med[@]}" -mllvm -bcf2 -mllvm -mergefunc -mllvm -igv -mllvm -antidbg -mllvm -funcwrap )
+          all=( "${max[@]}" -mllvm -fla -mllvm -aarch64-obfu -mllvm -fncmd )
+
+          echo "=== Tier Combination Test ==="
+
+          if "$clang" "${baseargs[@]}" -o /tmp/tier_low.o "${low[@]}" > /tmp/err.log 2>&1; then
+            echo "  [PASS] LOW     [4 passes]"
+          else
+            echo "  [FAIL] LOW"; grep "error:" /tmp/err.log | head -1 || true
+          fi
+
+          if "$clang" "${baseargs[@]}" -o /tmp/tier_med.o "${med[@]}" > /tmp/err.log 2>&1; then
+            echo "  [PASS] MEDIUM  [9 passes]"
+          else
+            echo "  [FAIL] MEDIUM"; grep "error:" /tmp/err.log | head -1 || true
+          fi
+
+          if "$clang" "${baseargs[@]}" -o /tmp/tier_max.o "${max[@]}" > /tmp/err.log 2>&1; then
+            echo "  [PASS] MAX     [14 passes]"
+          else
+            echo "  [FAIL] MAX"; grep "error:" /tmp/err.log | head -1 || true
+          fi
+
+          if "$clang" "${baseargs[@]}" -o /tmp/tier_all.o "${all[@]}" > /tmp/err.log 2>&1; then
+            echo "  [PASS] ALL     [17 passes]"
+          else
+            echo "  [FAIL] ALL"; grep "error:" /tmp/err.log | head -1 || true
+          fi
