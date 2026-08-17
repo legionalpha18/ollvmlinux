@@ -83,7 +83,7 @@ PreservedAnalyses FunctionCallObfuscate::run(Function &F,
   if (!this->initialized)
     initialize(*M);
   if (!triple.isAndroid() && !triple.isOSDarwin()) {
-    errs() << "Unsupported Target Triple: " << M->getTargetTriple().str()
+    errs() << "Unsupported Target Triple: " << M->getTargetTriple()
            << "\n";
     return PreservedAnalyses::all();
   }
@@ -145,7 +145,7 @@ PreservedAnalyses FunctionCallObfuscate::run(Function &F,
               dlopen_flag = ANDROID32_FLAG;
           } else {
             errs() << "[FunctionCallObfuscate] Unsupported Target Triple:"
-                   << M->getTargetTriple().str() << "\n";
+                   << M->getTargetTriple() << "\n";
             errs() << "[FunctionCallObfuscate] Applying Default Signature:"
                    << dlopen_flag << "\n";
           }
