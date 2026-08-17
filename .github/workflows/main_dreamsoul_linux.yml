@@ -396,10 +396,17 @@ jobs:
       - name: Enlarge swap space
         run: |
           set -euo pipefail
-          sudo fallocate -l 16G /swapfile 2>/dev/null || sudo dd if=/dev/zero of=/swapfile bs=1M count=16384 status=none
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
+          df -h / || true
+          SWAP=/var/ollvm_swapfile
+          # The runner image already ships an active /swapfile, so writing
+          # to that exact path fails with "Text file busy". Use a dedicated
+          # path instead and clean up any leftover from a previous run.
+          sudo swapoff "$SWAP" 2>/dev/null || true
+          sudo rm -f "$SWAP"
+          sudo fallocate -l 16G "$SWAP" 2>/dev/null || sudo dd if=/dev/zero of="$SWAP" bs=1M count=16384 status=none
+          sudo chmod 600 "$SWAP"
+          sudo mkswap "$SWAP" >/dev/null
+          sudo swapon "$SWAP"
           sudo swapon --show
           free -h
 
