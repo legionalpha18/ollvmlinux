@@ -17,6 +17,10 @@ on:
         description: 'Build run ID to pull artifact from (empty = latest successful build)'
         required: false
         default: ''
+      flags:
+        description: 'Comma-separated flags to test (empty = all 21)'
+        required: false
+        default: ''
 
 permissions:
   actions: read
@@ -91,16 +95,21 @@ jobs:
           int main() { return test_func(1, 2); }
           EOF
 
-      - name: Test Flags (17 individual)
+      - name: Test Flags (individual)
         run: |
           set -uo pipefail
           clang="$GITHUB_WORKSPACE/ollvm-dist/bin/clang"
           tf="/tmp/ollvm_test.c"
           pass=0; fail=0
 
-          flags=(sub sobf mba alias bcf bcf2 split fla icall ibr igv junkcode mergefunc fncmd aarch64-obfu antidbg funcwrap vmp constenc antihook fco)
+          FLAGS_IN="${{ github.event.inputs.flags }}"
+          if [ -n "$FLAGS_IN" ]; then
+            IFS=',' read -r -a flags <<< "$FLAGS_IN"
+          else
+            flags=(sub sobf mba alias bcf bcf2 split fla icall ibr igv junkcode mergefunc fncmd aarch64-obfu antidbg funcwrap vmp constenc antihook fco)
+          fi
 
-          echo "=== Individual Flag Test ==="
+          echo "=== Individual Flag Test (${#flags[@]} flags) ==="
           for f in "${flags[@]}"; do
             if "$clang" --target=aarch64-linux-android26 -O2 -c "$tf" -o "/tmp/t_$f.o" -mllvm -"$f" > /tmp/err.log 2>&1; then
               echo "  [PASS] -mllvm -$f"
@@ -117,6 +126,10 @@ jobs:
 
       - name: Test Tiers (4 combinations)
         run: |
+          if [ -n "${{ github.event.inputs.flags }}" ]; then
+            echo "Skipping tier tests (custom flags input set)"
+            exit 0
+          fi
           set -uo pipefail
           clang="$GITHUB_WORKSPACE/ollvm-dist/bin/clang"
           tf="/tmp/ollvm_test.c"

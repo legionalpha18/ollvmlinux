@@ -26,6 +26,8 @@ name: Build OLLVM17 (Linux, for Android NDK r26)
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '.github/workflows/verify-flags-linux.yml'
   pull_request:
     branches: [ main ]
   workflow_dispatch:
