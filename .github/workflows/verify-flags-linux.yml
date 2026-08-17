@@ -33,6 +33,8 @@ jobs:
 
       - name: Resolve build run
         id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           RUN_ID="${{ github.event.inputs.run_id }}"
@@ -48,6 +50,8 @@ jobs:
           echo "Using build run: $RUN_ID"
 
       - name: Download built toolchain artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p ollvm-dist
