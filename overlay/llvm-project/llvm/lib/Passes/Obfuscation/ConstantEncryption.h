@@ -1,6 +1,7 @@
 #ifndef LLVM_CONSTANT_ENCRYPTION_H
 #define LLVM_CONSTANT_ENCRYPTION_H
 
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/PassManager.h"
 #include <unordered_set>
 
