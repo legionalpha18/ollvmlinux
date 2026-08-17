@@ -58,8 +58,9 @@ jobs:
       - name: Extract toolchain
         run: |
           set -euo pipefail
-          mkdir -p ollvm-dist
-          tar -xzf ollvm-dist/*.tar.gz -C ollvm-dist
+          TGZ=$(find ollvm-dist -name '*.tar.gz' | head -1)
+          echo "Extracting: $TGZ"
+          tar -xzf "$TGZ" -C ollvm-dist
           ls -l ollvm-dist/bin/clang
 
       - name: Show clang version
