@@ -281,7 +281,7 @@ jobs:
       #      AFTER 6c so its anchors (AntiDebugging / FunctionWrapper /
       #      RewriteSymbolPass) are already present.
       # ---------------------------------------------------------------
-      - name: Patch PassBuilder.cpp (Hikari passes: vmp constenc antihook fco)
+      - name: 'Patch PassBuilder.cpp (Hikari passes: vmp constenc antihook fco)'
         run: |
           set -euo pipefail
           PY=python3
