@@ -207,7 +207,7 @@ PreservedAnalyses AntiHook::run(Module &M, ModuleAnalysisManager &AM) {
                   new LoadInst(GV->getValueType(), GV, Called->getName(), &I);
               Value *BitCasted = BitCastInst::CreateBitOrPointerCast(
                   Load, CB->getCalledOperand()->getType(), "", &I);
-              CB->setCalledFunction(BitCasted);
+              CB->setCalledOperand(BitCasted);
             }
           }
     }

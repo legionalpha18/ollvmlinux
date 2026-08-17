@@ -159,7 +159,7 @@ PreservedAnalyses FunctionCallObfuscate::run(Function &F,
               {Handle, IRB.CreateGlobalString(calledFunctionName)});
           Value *bitCastedFunction =
               IRB.CreateBitCast(fp, CB->getCalledOperand()->getType());
-          CB->setCalledFunction(bitCastedFunction);
+          CB->setCalledOperand(bitCastedFunction);
         }
       }
     }
